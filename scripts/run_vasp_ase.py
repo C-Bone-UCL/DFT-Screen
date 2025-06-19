@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-import os
-import sys
-import argparse
-
+import os, sys, argparse
 from ase.io import read, write
 from ase.calculators.vasp import Vasp
 from pymatgen.io.vasp.outputs import Vasprun
@@ -16,66 +13,56 @@ def run_one(cif_path, vasp_command, pp_path):
     write(os.path.join(workdir, "POSCAR"), atoms, format="vasp")
 
     calc = Vasp(
-        command=vasp_command,
-        directory=workdir,
-        xc="PBE",
-        encut=400,
-        kpts=[2,2,2],
-        istart=0,
-        icharg=2,
-        npar=4,
-        ibrion=-1,
-        nsw=0,
-        ediff=1e-5,
-        lreal="Auto",
-        pp=pp_path
+        command = vasp_command,
+        directory = workdir,
+        xc = "PBE",
+        encut = 400,
+        kpts = [2,2,2],
+        istart = 0,
+        icharg = 2,
+        npar = 4,
+        ibrion = -1,
+        nsw = 0,
+        ediff = 1e-5,
+        lreal = "Auto",
+        pp = pp_path
     )
-    atoms.set_calculator(calc)
+    atoms.calc = calc
 
     print(f"Running VASP for {base} …")
     energy = atoms.get_potential_energy()
 
-    vr = Vasprun(os.path.join(workdir, "vasprun.xml"), parse_dos=False, parse_eigen=False)
-    bg_data = vr.get_band_structure(line_mode=True).get_band_gap()
-    band_gap = bg_data["energy"]
+    vr = Vasprun(os.path.join(workdir, "vasprun.xml"), parse_dos=False, parse_eigen=True)
+    try:
+        gap = vr.get_band_structure().get_band_gap()["energy"]
+    except Exception:
+        gap = None
 
-    out = os.path.join(workdir, "results.txt")
-    with open(out, "w") as f:
+    with open(os.path.join(workdir, "results.txt"), "w") as f:
         f.write(f"Total energy (eV): {energy:.6f}\n")
-        f.write(f"Indirect band gap (eV): {band_gap:.4f}\n")
+        f.write(f"Indirect band gap (eV): {gap if gap is not None else 'N/A'}\n")
 
-    # alse write out the structure
     write(os.path.join(workdir, "CONTCAR"), atoms, format="vasp")
-
-    print(f"Results for {base} written to {out}\n")
+    print(f"Finished {base}\n")
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run VASP ground-state & band-gap for all CIFs in a folder"
-    )
-    parser.add_argument(
-        "cif_dir", metavar="CIF_DIR",
-        help="Directory containing CIF files"
-    )
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="VASP ground-state for all CIFs in a folder")
+    p.add_argument("cif_dir", metavar="CIF_DIR")
+    args = p.parse_args()
 
     vasp_cmd = os.environ.get("VASP_COMMAND")
     pp_path  = os.environ.get("VASP_PP_PATH")
-    if not vasp_cmd or not pp_path:
-        print("Error: set VASP_COMMAND and VASP_PP_PATH in your env", file=sys.stderr)
-        sys.exit(1)
+    if not (vasp_cmd and pp_path):
+        sys.exit("VASP_COMMAND and/or VASP_PP_PATH not set")
 
     if not os.path.isdir(args.cif_dir):
-        print(f"Error: not a directory: {args.cif_dir}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(f"{args.cif_dir} is not a directory")
 
     cif_files = [os.path.join(args.cif_dir, f)
-                 for f in os.listdir(args.cif_dir)
-                 if f.lower().endswith(".cif")]
+                 for f in os.listdir(args.cif_dir) if f.lower().endswith(".cif")]
 
     if not cif_files:
-        print(f"No CIF files found in {args.cif_dir}", file=sys.stderr)
-        sys.exit(0)
+        sys.exit("No CIF files found")
 
     for cif in sorted(cif_files):
         run_one(cif, vasp_cmd, pp_path)
