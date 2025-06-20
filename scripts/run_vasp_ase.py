@@ -27,8 +27,13 @@ def workflow(cif, potcar_dir):
     atoms.info['comment'] = atoms.get_chemical_formula()   # <- clean first line
     write("POSCAR", atoms, format="vasp", vasp5=True)      # preserves your flags
 
+    # Definitive solution: Build full paths to each POTCAR file.
+    # This completely overrides ASE's path-finding logic.
     symbols = sorted(list(set(atoms.get_chemical_symbols())))
-    custom_setups = {symbol: '' for symbol in symbols}
+    full_path_setups = {
+        symbol: os.path.join(potcar_dir, symbol, 'POTCAR')
+        for symbol in symbols
+    }
 
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
@@ -57,8 +62,8 @@ def workflow(cif, potcar_dir):
     kspacing=0.55, gamma=False,
     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
     ismear=0, lwave=True, lcharg=True,
-    setups=custom_setups,
-    npar=max(1, int(os.environ.get("NSLOTS", "1")) // 2),
+    setups=full_path_setups,
+    npar=max(1, int(os.environ.get("NSlots", "1")) // 2),
     kpar=2
     )
 
