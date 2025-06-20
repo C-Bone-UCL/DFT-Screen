@@ -2,7 +2,7 @@
 source /etc/profile.d/modules.sh
 
 #$ -N optimize_TiO2
-#$ -l h_rt=0:30:00
+#$ -l h_rt=12:00:00
 #$ -pe mpi 36
 #$ -l mem=1G
 
@@ -26,5 +26,4 @@ export PMG_VASP_PSP_DIR=$VASP_PP_PATH
 conda activate DFT-Screen-venv
 
 python scripts/run_vasp_ase.py \
-      files/TiO2_polymorphs
-
+      files/TiO2_run

@@ -106,6 +106,8 @@ def workflow(cif, potcar_dir):
     structure = Structure.from_file(cif)
     structure.comment = f"Structure {os.path.splitext(cif)[0]}"
 
+    print(f"####Starting workflow for {structure.comment}####")
+
     # This bit is for parallelization settings
     # It determines the number of processors to use based on the NSLOTS environment variable.
     ranks  = int(os.environ.get("NSLOTS", "1"))
@@ -118,7 +120,7 @@ def workflow(cif, potcar_dir):
     # Common settings for all VASP runs
     common_settings = dict(
         PREC="Accurate",    # Internal precision related params
-        ENCUT=400,          # Energy cutoff for plane waves (size of basis set)
+        ENCUT=520,          # Energy cutoff for plane waves (size of basis set)
         EDIFF=1e-6,         # Energy convergence criterion
         EDIFFG=1e-5,        # Force convergence criterion
         ISMEAR=0,           # smearing applied to electronic states (0 = Gaussian smearing)
