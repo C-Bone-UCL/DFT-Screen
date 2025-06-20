@@ -15,9 +15,36 @@ def get_cycle():
     return 0 if not outs else int(outs[-1].split('_')[0][5:]) + 1
 
 def run_step(calc, infile, tag):
+    # --- Start Debug Block ---
+    print(f"\n--- DEBUG: In run_step for tag '{tag}', about to read '{infile}' ---")
+    if os.path.exists(infile):
+        if os.path.getsize(infile) > 0:
+            print(f"--- Contents of {infile}: ---")
+            with open(infile, 'r') as f_debug:
+                print(f_debug.read())
+            print(f"--- End of {infile} contents ---")
+        else:
+            print(f"--- DEBUG WARNING: {infile} exists but is EMPTY. ---")
+    else:
+        print(f"--- DEBUG ERROR: {infile} does not exist! ---")
+    # --- End Debug Block ---
+
     atoms = read(infile)
     atoms.calc = calc
     atoms.get_potential_energy()
+
+    # --- Start Debug Block ---
+    print(f"--- DEBUG: VASP run finished for tag '{tag}'. Checking outputs. ---")
+    if os.path.exists("vasp_out"):
+        print("--- DEBUG: Contents of vasp_out (VASP stdout) ---")
+        with open("vasp_out", "r") as f_debug:
+            # Print last 20 lines of VASP output
+            lines = f_debug.readlines()
+            for line in lines[-20:]:
+                print(line.strip())
+        print("--- END DEBUG: vasp_out ---")
+    # --- End Debug Block ---
+
     shutil.copy("OUTCAR",  f"{tag}.OUTCAR")
     shutil.copy("CONTCAR", f"{tag}.CONTCAR")
     return "CONTCAR"
@@ -44,10 +71,6 @@ def workflow(cif, potcar_dir):
                 shutil.copyfileobj(individual_potcar, potcar_file)
     # --- End Manual POTCAR Generation ---
 
-    # print potcar file for debugging
-    with open("POTCAR", "r") as f:
-        print(f.read())
-
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
 
@@ -57,7 +80,7 @@ def workflow(cif, potcar_dir):
         kpar -= 1
     npar   = max(1, ranks // kpar)
 
-    print(f"Using {npar} processors for parallelization and {kpar} k-points parallelization.")
+    print(f"Using npar={npar} and kpar={kpar} for this run.")
 
     common = dict(
     command=os.environ["VASP_COMMAND"],
@@ -70,8 +93,10 @@ def workflow(cif, potcar_dir):
     kspacing=0.55, gamma=False,
     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
     ismear=0, lwave=True, lcharg=True,
-    npar=max(1, int(os.environ.get("NSLOTS", "1")) // 2),
-    kpar=2
+    # --- FIX ---
+    # Use the npar and kpar values calculated above
+    npar=npar,
+    kpar=kpar
     )
 
     isif2  = Vasp(**common, isif=2, nsw=60,  potim=0.5)
