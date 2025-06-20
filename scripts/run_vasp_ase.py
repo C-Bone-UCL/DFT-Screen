@@ -30,7 +30,10 @@ def run_workflow(cif_path, vasp_command, pp_path):
 
     #### Set parameters here
     cutoff = 500.0 # This is the planewave cutoff energy in eV
-    kp, np = 14, 6 # Number of k-points and processors
+
+    kp, np = 1 # k-point density and number of processors
+    np = 16 // kp # Ensure that the number of processors is a divisor of mpi cores
+
     max2, max4, max3, max3s = 2000, 10, 100, 10 # Max steps for each run
     sym, spin, ivdw = 2, 1, 0 # Symmetry, spin polarization, and vdW correction
     pim2, pim4, pim3 = 0.5, 0.05, 0.75 # Ionic relaxation parameters
