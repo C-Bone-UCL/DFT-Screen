@@ -23,11 +23,10 @@ def run_step(calc, infile, tag):
     return "CONTCAR"
 
 def workflow(cif, potcar_dir):
-    atoms = read(cif)
-    os.makedirs("run", exist_ok=True)
-    os.chdir("run")
-
-    write("POSCAR", atoms, format="vasp")
+    atoms = read(cif)                             # already in your workflow
+    atoms.info['comment'] = atoms.get_chemical_formula()   # <- clean first line
+    write("POSCAR", atoms, format="vasp", vasp5=True)      # preserves your flags
+    
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
 
