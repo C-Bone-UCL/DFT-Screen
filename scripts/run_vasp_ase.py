@@ -30,8 +30,9 @@ def workflow(cif, potcar_dir):
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
 
-    # This environment variable is now used by the pp parameter below, not by ASE directly.
-    # os.environ["VASP_PP_PATH"] = potcar_dir
+    # The VASP_PP_PATH environment variable is set outside the script.
+    # ASE will pick it up automatically. We pass potcar_dir for clarity
+    # but it is not used to set any calculator parameters anymore.
     # command = os.environ["VASP_COMMAND"]
 
     ranks  = int(os.environ.get("NSLOTS", "1"))
@@ -49,7 +50,7 @@ def workflow(cif, potcar_dir):
 
     common = dict(
     command=os.environ["VASP_COMMAND"],
-    pp=potcar_dir, # Use the 'pp' parameter, which points to the root of your potential library.
+    # No 'pp' or 'setups' needed. ASE will use VASP_PP_PATH.
     istart=0, icharg=2,        # fresh SCF each step
     prec="Accurate", lreal=False,
     encut=400, nelm=120, ediff=1e-6, xc="PBE",
