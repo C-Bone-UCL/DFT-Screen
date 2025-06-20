@@ -54,7 +54,6 @@ def workflow(cif, potcar_dir):
     kspacing=0.55, gamma=False,
     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
     ismear=0, lwave=True, lcharg=True,
-    setups='PBE_54',
     npar=max(1, int(os.environ.get("NSLOTS", "1")) // 2),
     kpar=2
     )
