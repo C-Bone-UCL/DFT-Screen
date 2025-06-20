@@ -25,15 +25,27 @@ def run_step(calc, infile, tag):
 def workflow(cif, potcar_dir):
     atoms = read(cif)                             # already in your workflow
     atoms.info['comment'] = atoms.get_chemical_formula()   # <- clean first line
-    write("POSCAR", atoms, format="vasp", vasp5=True)      # preserves your flags
+    # Write POSCAR. The vasp format writer sorts atoms by symbol by default.
+    write("POSCAR", atoms, format="vasp", vasp5=True)
+
+    # --- Start Manual POTCAR Generation ---
+    # Get the exact order of elements from the written POSCAR
+    symbols_in_order = []
+    for atom in read("POSCAR"):
+        symbol = atom.symbol
+        if symbol not in symbols_in_order:
+            symbols_in_order.append(symbol)
+
+    # Concatenate POTCAR files in the correct order
+    with open("POTCAR", 'wb') as potcar_file:
+        for symbol in symbols_in_order:
+            potcar_path = os.path.join(potcar_dir, symbol, 'POTCAR')
+            with open(potcar_path, 'rb') as individual_potcar:
+                shutil.copyfileobj(individual_potcar, potcar_file)
+    # --- End Manual POTCAR Generation ---
 
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
-
-    # The VASP_PP_PATH environment variable is set outside the script.
-    # ASE will pick it up automatically. We pass potcar_dir for clarity
-    # but it is not used to set any calculator parameters anymore.
-    # command = os.environ["VASP_COMMAND"]
 
     ranks  = int(os.environ.get("NSLOTS", "1"))
     kpar   = max(1, int(round(ranks ** 0.5)))
@@ -41,19 +53,14 @@ def workflow(cif, potcar_dir):
         kpar -= 1
     npar   = max(1, ranks // kpar)
 
-    # common = dict(
-    #     command=command, istart=1, icharg=1, prec="Accurate", lreal=False,
-    #     encut=400, nelm=120, ediff=1e-6, xc="PBE", kspacing=0.55,
-    #     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
-    #     ismear=0, lwave=True, lcharg=True, npar=npar, kpar=kpar, gamma=False
-    # )
-
     common = dict(
     command=os.environ["VASP_COMMAND"],
-    # No 'pp' or 'setups' needed. ASE will use VASP_PP_PATH.
-    istart=0, icharg=2,        # fresh SCF each step
+    # We created the POTCAR manually, so we don't need pp, setups, or xc.
+    # We specify the functional directly with gga='PE'.
+    gga='PE',
+    istart=0, icharg=2,
     prec="Accurate", lreal=False,
-    encut=400, nelm=120, ediff=1e-6, xc="PBE",
+    encut=400, nelm=120, ediff=1e-6,
     kspacing=0.55, gamma=False,
     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
     ismear=0, lwave=True, lcharg=True,
