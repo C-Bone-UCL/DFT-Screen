@@ -27,18 +27,11 @@ def workflow(cif, potcar_dir):
     atoms.info['comment'] = atoms.get_chemical_formula()   # <- clean first line
     write("POSCAR", atoms, format="vasp", vasp5=True)      # preserves your flags
 
-    # Definitive solution: Build full paths to each POTCAR file.
-    # This completely overrides ASE's path-finding logic.
-    symbols = sorted(list(set(atoms.get_chemical_symbols())))
-    full_path_setups = {
-        symbol: os.path.join(potcar_dir, symbol, 'POTCAR')
-        for symbol in symbols
-    }
-
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
 
-    os.environ["VASP_PP_PATH"] = potcar_dir
+    # This environment variable is now used by the pp parameter below, not by ASE directly.
+    # os.environ["VASP_PP_PATH"] = potcar_dir
     # command = os.environ["VASP_COMMAND"]
 
     ranks  = int(os.environ.get("NSLOTS", "1"))
@@ -56,14 +49,14 @@ def workflow(cif, potcar_dir):
 
     common = dict(
     command=os.environ["VASP_COMMAND"],
+    pp=potcar_dir, # Use the 'pp' parameter, which points to the root of your potential library.
     istart=0, icharg=2,        # fresh SCF each step
     prec="Accurate", lreal=False,
     encut=400, nelm=120, ediff=1e-6, xc="PBE",
     kspacing=0.55, gamma=False,
     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
     ismear=0, lwave=True, lcharg=True,
-    setups=full_path_setups,
-    npar=max(1, int(os.environ.get("NSlots", "1")) // 2),
+    npar=max(1, int(os.environ.get("NSLOTS", "1")) // 2),
     kpar=2
     )
 
