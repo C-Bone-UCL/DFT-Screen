@@ -98,13 +98,25 @@ def workflow(cif, potcar_dir):
         run_step(structure, isif2_settings, f"Cycle{cyc}_ISIF2")
         structure = Structure.from_file("CONTCAR")
 
+        # print intermediate results
+        vr = Vasprun("vasprun.xml", parse_eigen=True)
+        print(f"Cycle {cyc} - Energy: {vr.final_energy:.6f} eV")
+
         run_step(structure, isif3_settings, f"Cycle{cyc}_ISIF3")
         structure = Structure.from_file("CONTCAR")
+
+        # Print intermediate results
+        vr = Vasprun("vasprun.xml", parse_eigen=True)
+        print(f"Cycle {cyc} - Energy: {vr.final_energy:.6f} eV")
 
         if check_finished(f"Cycle{cyc}_ISIF3.OUTCAR"):
             run_step(structure, isif3s_settings, f"Cycle{cyc}_ISIF3s")
             if check_finished(f"Cycle{cyc}_ISIF3s.OUTCAR"):
                 print("--- Workflow converged successfully. ---")
+                # Print final results
+                vr = Vasprun("vasprun.xml", parse_eigen=True)
+                print(f"Final Energy: {vr.final_energy:.6f} eV")
+                print(f"Final Band Gap: {vr.get_band_structure().get_band_gap()['energy']:.4f} eV")
                 break
         cyc += 1
     
