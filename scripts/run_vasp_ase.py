@@ -15,6 +15,17 @@ def get_cycle():
     return 0 if not outs else int(outs[-1].split('_')[0][5:]) + 1
 
 def run_step(calc, infile, tag):
+    # --- Start DEBUG block for run_step ---
+    print(f"\n--- DEBUG: Inside run_step for tag='{tag}', about to read '{infile}' ---")
+    if os.path.exists(infile):
+        print(f"--- Contents of {infile} before reading: ---")
+        with open(infile, 'r') as f_debug:
+            print(f_debug.read())
+        print(f"--- End of {infile} contents ---")
+    else:
+        sys.exit(f"--- FATAL DEBUG ERROR: {infile} does not exist before read in run_step ---")
+    # --- End DEBUG block ---
+
     # Read the structure to be run
     atoms = read(infile)
     # Assign the calculator to the atoms object. This does NOT run the calculation.
@@ -26,15 +37,10 @@ def run_step(calc, infile, tag):
     atoms.calc.write_input(atoms)
 
     # --- Manually execute VASP ---
-    # We use subprocess.run to have more control and capture output.
     vasp_command_str = os.environ["VASP_COMMAND"]
-    # We split the command string into a list for subprocess
-    # Note: This is a simple split; works for "mpirun -np 16 ..."
-    # but might fail for more complex commands with quoted arguments.
     command_list = vasp_command_str.split()
     print(f"--- DEBUG: Executing command: {' '.join(command_list)} ---")
 
-    # We redirect stdout to 'vasp_out' manually
     with open('vasp_out', 'w') as f_out:
         result = subprocess.run(command_list, stdout=f_out, stderr=subprocess.PIPE, text=True)
 
@@ -42,7 +48,6 @@ def run_step(calc, infile, tag):
         print(f"--- VASP CRASHED for tag {tag} ---")
         print("--- stderr from VASP: ---")
         print(result.stderr)
-        # We can decide to stop the workflow here if VASP crashes
         sys.exit(f"VASP execution failed for tag {tag}. Check outputs.")
 
     shutil.copy("OUTCAR",  f"{tag}.OUTCAR")
@@ -51,13 +56,19 @@ def run_step(calc, infile, tag):
 
 def workflow(cif, potcar_dir):
     atoms = read(cif)                             # already in your workflow
-    # This becomes the comment line in the POSCAR. Let's make it clean.
     atoms.info['comment'] = f"Structure {os.path.splitext(cif)[0]}"
     write("POSCAR", atoms, format="vasp", vasp5=True)
 
+    # --- Start DEBUG block for initial file creation ---
+    print(f"\n--- DEBUG: In workflow for '{cif}', checking initial POSCAR ---")
+    with open("POSCAR", 'r') as f_debug:
+        print("--- Contents of initial POSCAR: ---")
+        print(f_debug.read())
+        print("--- End of initial POSCAR contents ---")
+    # --- End DEBUG block ---
+
     # --- Start Manual POTCAR Generation ---
     symbols_in_order = []
-    # Read the newly written POSCAR to get the exact atom order
     for atom in read("POSCAR"):
         symbol = atom.symbol
         if symbol not in symbols_in_order:
@@ -82,9 +93,6 @@ def workflow(cif, potcar_dir):
     print(f"Using npar={npar} and kpar={kpar} for this run.")
 
     common = dict(
-    # REMOVED command parameter as we now run VASP manually.
-    # We tell ASE a POTCAR exists by not providing pp, setups, or xc.
-    # Set GGA to PS for the PBEsol functional.
     gga='PS',
     istart=0, icharg=2,
     prec="Accurate", lreal=False,
