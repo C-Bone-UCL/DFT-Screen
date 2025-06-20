@@ -29,10 +29,12 @@ def run_one_step(calculator, in_file, tag):
     return read("CONTCAR")
 
 def workflow_for_cif(cif_file, vasp_exe, pp_path):
+    atoms = read(cif_file)
+    
     os.makedirs("run", exist_ok=True)
     os.chdir("run")
 
-    atoms = read(cif_file)
+
     write("POSCAR", atoms, format="vasp")
     if not os.path.exists("POSCAR_initial"):
         shutil.copy("POSCAR", "POSCAR_initial")
@@ -40,7 +42,8 @@ def workflow_for_cif(cif_file, vasp_exe, pp_path):
         shutil.copy("POSCAR", "CONTCAR")
 
     os.environ["VASP_PP_PATH"] = pp_path
-    command = f"mpirun -np 16 {vasp_exe} > vasp.log 2>&1"
+
+    command = vasp_exe
 
     common = dict(
         command=command, istart=1, icharg=1, prec="Accurate", lreal=False,
