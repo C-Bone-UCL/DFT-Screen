@@ -26,7 +26,5 @@ export ASE_VASP_COMMAND="mpirun -np $NSLOTS $VASP_EXE > vasp_out"
 conda activate DFT-Screen-venv
 
 python scripts/run_vasp_ase.py \
-      files/TiO2_polymorphs \
-      --vasp_exe   "$VASP_EXE" \
-      --potcar_dir "$VASP_PP_PATH"
+      files/TiO2_polymorphs
 

@@ -32,7 +32,7 @@ def workflow(cif, potcar_dir):
         shutil.copy("POSCAR", "CONTCAR")
 
     os.environ["VASP_PP_PATH"] = potcar_dir
-    command = os.environ["VASP_COMMAND"]
+    # command = os.environ["VASP_COMMAND"]
 
     ranks  = int(os.environ.get("NSLOTS", "1"))
     kpar   = max(1, int(round(ranks ** 0.5)))
@@ -40,12 +40,25 @@ def workflow(cif, potcar_dir):
         kpar -= 1
     npar   = max(1, ranks // kpar)
 
+    # common = dict(
+    #     command=command, istart=1, icharg=1, prec="Accurate", lreal=False,
+    #     encut=400, nelm=120, ediff=1e-6, xc="PBE", kspacing=0.55,
+    #     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
+    #     ismear=0, lwave=True, lcharg=True, npar=npar, kpar=kpar, gamma=False
+    # )
+
     common = dict(
-        command=command, istart=1, icharg=1, prec="Accurate", lreal=False,
-        encut=400, nelm=120, ediff=1e-6, xc="PBE", kspacing=0.55,
-        ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
-        ismear=0, lwave=True, lcharg=True, npar=npar, kpar=kpar, gamma=False
+    command=os.environ["VASP_COMMAND"],
+    istart=0, icharg=2,        # fresh SCF each step
+    prec="Accurate", lreal=False,
+    encut=400, nelm=120, ediff=1e-6, xc="PBE",
+    kspacing=0.55, gamma=False,
+    ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
+    ismear=0, lwave=True, lcharg=True,
+    npar=max(1, int(os.environ.get("NSLOTS", "1")) // 2),
+    kpar=2
     )
+
     isif2  = Vasp(**common, isif=2, nsw=60,  potim=0.5)
     isif3  = Vasp(**common, isif=3, nsw=80,  potim=0.75)
     isif3s = Vasp(**common, isif=3, nsw=8,   potim=0.75)
