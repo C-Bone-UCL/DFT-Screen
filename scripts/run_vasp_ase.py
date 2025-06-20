@@ -1,123 +1,91 @@
-# Inspired from ASE for VASP in MDIG Group Guide
-
 #!/usr/bin/env python3
-import os, sys, glob, shutil, argparse
-import ase
+import os, sys, shutil, argparse, glob
 from ase.io import read, write
 from ase.calculators.vasp import Vasp
 from pymatgen.io.vasp.outputs import Vasprun
 
-def get_max_ind(pattern):
-    files = glob.glob(pattern)
-    if not files:
-        return 0
-    return max(int(f.split('.')[1]) for f in files)
-
-def check_finished(outfile):
+def check_finished(outfile="OUTCAR"):
+    if not os.path.isfile(outfile):
+        return False
     with open(outfile) as f:
         for line in f:
-            if 'reached required accuracy - stopping structural energy minimisation' in line:
+            if ("reached required accuracy"
+                    in line and "energy minimisation" in line):
                 return True
     return False
 
-def run_workflow(cif_path, vasp_command, pp_path):
-    atoms = ase.io.read(cif_path)
+def get_cycle_index():
+    outs = sorted(glob.glob("Cycle*_ISIF3.OUTCAR"))
+    if not outs:
+        return 0
+    return int(outs[-1].split('_')[0][5:]) + 1
 
+def run_one_step(calculator, in_file, tag):
+    bulk = read(in_file)
+    bulk.calc = calculator
+    _ = bulk.get_potential_energy()
+    shutil.copy("OUTCAR", f"{tag}.OUTCAR")
+    shutil.copy("CONTCAR", f"{tag}.CONTCAR")
+    return read("CONTCAR")
+
+def workflow_for_cif(cif_file, vasp_exe, pp_path):
     os.makedirs("run", exist_ok=True)
     os.chdir("run")
 
+    atoms = read(cif_file)
     write("POSCAR", atoms, format="vasp")
+    if not os.path.exists("POSCAR_initial"):
+        shutil.copy("POSCAR", "POSCAR_initial")
+    if not os.path.exists("CONTCAR"):
+        shutil.copy("POSCAR", "CONTCAR")
 
-    #### Set parameters here
-    cutoff = 500.0 # This is the planewave cutoff energy in eV
+    os.environ["VASP_PP_PATH"] = pp_path
+    command = f"mpirun -np 16 {vasp_exe} > vasp.log 2>&1"
 
-    kp = 4 # k-point density
-    np = 4 # Ensure that the number of processors is a divisor of mpi cores
+    common = dict(
+        command=command, istart=1, icharg=1, prec="Accurate", lreal=False,
+        encut=400, nelm=120, ediff=1e-6, xc="PBE", kspacing=0.55,
+        ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
+        ismear=0, lwave=True, lcharg=True, npar=8, kpar=2
+    )
 
-    gamma = False # Dont use gamma point sampling
+    isif2  = Vasp(**common, isif=2, nsw=150, potim=0.5)
+    isif3  = Vasp(**common, isif=3, nsw=200, potim=0.75)
+    isif3s = Vasp(**common, isif=3, nsw=8,   potim=0.75)
 
-    max2, max4, max3, max3s = 2000, 10, 100, 10 # Max steps for each run
-    sym, spin, ivdw = 2, 1, 0 # Symmetry, spin polarization, and vdW correction
-    pim2, pim4, pim3 = 0.5, 0.05, 0.75 # Ionic relaxation parameters
-    ioncut = 1e-6 # Ionic convergence criterion
-    gga = 'pbesol' # Exchange-correlation functional
-    symprec = 0.01 # Symmetry precision
-    brion, ist = 1, 1 # Brion algorithm and initial structure
-    #### Finished setting parameters
+    cycle = get_cycle_index()
+    while cycle < 30:  # hard stop
+        atoms = run_one_step(isif2,  "CONTCAR", f"Cycle{cycle}_ISIF2")
+        atoms = run_one_step(isif3,  "CONTCAR", f"Cycle{cycle}_ISIF3")
 
-    #### Define the types of run that will be required
-    isif2 = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=gamma, reciprocal=True,
-                 prec="Accurate", lreal=False, algo="All", encut=cutoff,
-                 nelm=200, ediff=1e-7, xc=gga, kspacing=0.242, ispin=spin,
-                 ediffg=ioncut, nsw=max2, ibrion=brion, isif=2, isym=sym, ivdw=ivdw,
-                 npar=np, kpar=kp, potim=pim2, symprec=symprec, ismear=0,
-                 command=vasp_command, pp=pp_path, directory=".")
-
-    isif3 = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=gamma, reciprocal=True,
-                 prec="Accurate", lreal=False, algo="All", encut=cutoff,
-                 nelm=200, ediff=1e-7, xc=gga, kspacing=0.242, ispin=spin,
-                 ediffg=ioncut, nsw=max3, ibrion=brion, isif=3, isym=sym, ivdw=ivdw,
-                 npar=np, kpar=kp, potim=pim3, symprec=symprec, ismear=0,
-                 command=vasp_command, pp=pp_path, directory=".")
-
-    isif3s = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=gamma, reciprocal=True,
-                  prec="Accurate", lreal=False, algo="All", encut=cutoff,
-                  nelm=200, ediff=1e-7, xc=gga, kspacing=0.242, ispin=spin,
-                  ediffg=ioncut, nsw=max3s, ibrion=brion, isif=3, isym=sym, ivdw=ivdw,
-                  npar=np, kpar=kp, potim=pim3, symprec=symprec, ismear=0,
-                  command=vasp_command, pp=pp_path, directory=".")
-
-
-    bulk = read("POSCAR")
-    finished = False
-    counter = get_max_ind('OUTCAR.*.i3')
-
-    while not finished:
-        bulk.calc = isif2
-        bulk.get_potential_energy()
-        shutil.copy("OUTCAR", f"OUTCAR.{counter}.i2")
-        shutil.copy("CONTCAR", f"CONTCAR.{counter}.i2")
-        bulk = read("CONTCAR")
-
-        bulk.calc = isif3
-        bulk.get_potential_energy()
-        shutil.copy("OUTCAR", f"OUTCAR.{counter}.i3")
-        shutil.copy("CONTCAR", f"CONTCAR.{counter}.i3")
-        bulk = read("CONTCAR")
-
-        bulk.calc = isif3s
-        bulk.get_potential_energy()
-        shutil.copy("OUTCAR", f"OUTCAR.{counter}.i3s")
-        shutil.copy("CONTCAR", f"CONTCAR.{counter}.i3s")
-
-        finished = check_finished("OUTCAR")
-        bulk = read("CONTCAR")
-        counter += 1
+        if check_finished("OUTCAR"):
+            atoms = run_one_step(isif3s, "CONTCAR", f"Cycle{cycle}_ISIF3s")
+            if check_finished("OUTCAR"):
+                break
+        cycle += 1
 
     vr = Vasprun("vasprun.xml", parse_eigen=True)
     gap = vr.get_band_structure().get_band_gap()["energy"]
-    energy = vr.final_energy
     with open("results.txt", "w") as f:
-        f.write(f"Energy_eV {energy:.6f}\nBandGap_eV {gap:.4f}\n")
+        f.write(f"Energy_eV {vr.final_energy:.6f}\nBandGap_eV {gap:.4f}\n")
     os.chdir("..")
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("cif_dir")
+    p.add_argument("cif_folder")
+    p.add_argument("--vasp_exe", required=True)
+    p.add_argument("--potcar_dir", required=True)
     args = p.parse_args()
-    vasp_cmd = os.environ["VASP_COMMAND"]
-    pp_path = os.environ["VASP_PP_PATH"]
-    for cif in sorted(f for f in os.listdir(args.cif_dir) if f.lower().endswith(".cif")):
-        print(f"Processing {cif}...")
 
-        name = os.path.splitext(cif)[0]
-        if not os.path.exists(name):
-            os.mkdir(name)
-        shutil.copy(os.path.join(args.cif_dir, cif), name)
-        os.chdir(name)
-        run_workflow(cif, vasp_cmd, pp_path)
+    cif_list = sorted([c for c in os.listdir(args.cif_folder) if c.lower().endswith(".cif")])
+    for cif in cif_list:
+        case = os.path.splitext(cif)[0]
+        if not os.path.isdir(case):
+            os.mkdir(case)
+        shutil.copy(os.path.join(args.cif_folder, cif), case)
+        os.chdir(case)
+        workflow_for_cif(cif, args.vasp_exe, args.potcar_dir)
         os.chdir("..")
 
 if __name__ == "__main__":
     main()
-
