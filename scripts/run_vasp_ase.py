@@ -17,39 +17,18 @@ def get_cycle():
 def run_step(structure, incar_settings, tag):
     print(f"\n--- Preparing VASP step: '{tag}' ---")
 
-    # Use Pymatgen's MPRelaxSet to generate a complete and validated
-    # set of VASP input files (INCAR, KPOINTS, POSCAR, POTCAR).
-    # It automatically uses the VASP_PP_PATH environment variable for potentials.
-    # The 'force_gamma=False' argument honors your original setting.
+    # This is the key change: We use `user_potcar_mapping` to explicitly
+    # tell MPRelaxSet which potential to use for each element, overriding
+    # its default (e.g. "Ti_pv"). This forces it to use the standard "Ti" and "O".
+    # We also specify the functional to ensure it looks in the correct PBE_54 library.
     calc_set = MPRelaxSet(
         structure,
         user_incar_settings=incar_settings,
         force_gamma=False,
-        user_potcar_functional="PBE_54"
+        user_potcar_functional="PBE_54",
+        user_potcar_mapping={"Ti": "Ti", "O": "O"}
     )
     calc_set.write_input('.')
-    
-    print(f"--- Input files for {tag} written successfully. ---")
-
-    # print first few lines of INCAR for debugging
-    with open("INCAR", "r") as incar_file:
-        print("--- INCAR contents: ---")
-        for line in incar_file.readlines()[:10]:
-            print(line.strip())
-        print("--- End of INCAR contents ---")
-    # print first few lines of KPOINTS for debugging
-    with open("KPOINTS", "r") as kpoints_file:
-        print("--- KPOINTS contents: ---")
-        for line in kpoints_file.readlines()[:10]:
-            print(line.strip())
-        print("--- End of KPOINTS contents ---")
-    # print first few lines of POSCAR for debugging
-    with open("POSCAR", "r") as poscar_file:
-        print("--- POSCAR contents: ---")
-        for line in poscar_file.readlines()[:10]:
-            print(line.strip())
-        print("--- End of POSCAR contents ---")
-
 
     # Manually execute VASP using the command from the environment
     vasp_command_str = os.environ["VASP_COMMAND"]
@@ -68,13 +47,6 @@ def run_step(structure, incar_settings, tag):
     shutil.copy("OUTCAR",  f"{tag}.OUTCAR")
     shutil.copy("CONTCAR", f"{tag}.CONTCAR")
     shutil.copy("vasprun.xml", f"{tag}.vasprun.xml")
-
-    # print first few lines of CONTCAR for debugging
-    with open("CONTCAR", "r") as contcar_file:
-        print("--- CONTCAR contents: ---")
-        for line in contcar_file.readlines()[:10]:
-            print(line.strip())
-        print("--- End of CONTCAR contents ---")
     
     return "CONTCAR"
 
@@ -146,9 +118,9 @@ def main():
     pr.add_argument("cif_dir")
     args = pr.parse_args()
 
-    potdir = os.environ.get("VASP_PP_PATH")
+    potdir = os.environ.get("PMG_VASP_PSP_DIR")
     if not potdir or not os.environ.get("VASP_COMMAND"):
-        sys.exit("export VASP_COMMAND and VASP_PP_PATH before running.")
+        sys.exit("export VASP_COMMAND and PMG_VASP_PSP_DIR before running.")
 
     for cif in sorted(f for f in os.listdir(args.cif_dir) if f.lower().endswith(".cif")):
         case = os.path.splitext(cif)[0]
