@@ -21,8 +21,14 @@ def run_step(structure, incar_settings, tag):
     # set of VASP input files (INCAR, KPOINTS, POSCAR, POTCAR).
     # It automatically uses the VASP_PP_PATH environment variable for potentials.
     # The 'force_gamma=False' argument honors your original setting.
-    calc_set = MPRelaxSet(structure, user_incar_settings=incar_settings, force_gamma=False)
+    calc_set = MPRelaxSet(
+        structure,
+        user_incar_settings=incar_settings,
+        force_gamma=False,
+        user_potcar_functional="PBE_54"
+    )
     calc_set.write_input('.')
+    
     print(f"--- Input files for {tag} written successfully. ---")
 
     # print first few lines of INCAR for debugging
