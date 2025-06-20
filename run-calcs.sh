@@ -20,7 +20,7 @@ eval "$(conda shell.bash hook)"
 export NSLOTS=${NSLOTS:=1}
 export VASP_EXE=$HOME/Scratch/vasp/vasp-6.4.2/bin/vasp_std
 export VASP_COMMAND="mpirun -np $NSLOTS $VASP_EXE > vasp_out"
-export VASP_PP_PATH=$HOME/Scratch/vasp/vasp-6.4.2/potentials
+export VASP_PP_PATH=$HOME/Scratch/vasp/vasp-6.4.2/potentials/potentials_PBE.54
 export ASE_VASP_COMMAND="mpirun -np $NSLOTS $VASP_EXE > vasp_out"
 
 conda activate DFT-Screen-venv

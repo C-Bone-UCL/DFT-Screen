@@ -44,6 +44,10 @@ def workflow(cif, potcar_dir):
                 shutil.copyfileobj(individual_potcar, potcar_file)
     # --- End Manual POTCAR Generation ---
 
+    # print potcar file for debugging
+    with open("POTCAR", "r") as f:
+        print(f.read())
+
     if not os.path.exists("CONTCAR"):
         shutil.copy("POSCAR", "CONTCAR")
 
@@ -52,6 +56,8 @@ def workflow(cif, potcar_dir):
     while ranks % kpar:
         kpar -= 1
     npar   = max(1, ranks // kpar)
+
+    print(f"Using {npar} processors for parallelization and {kpar} k-points parallelization.")
 
     common = dict(
     command=os.environ["VASP_COMMAND"],
