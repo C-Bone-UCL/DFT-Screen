@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, shutil, argparse, glob
+import os, sys, shutil, argparse, glob, subprocess
 from ase.io import read, write
 from ase.calculators.vasp import Vasp
 from pymatgen.io.vasp.outputs import Vasprun
@@ -15,35 +15,35 @@ def get_cycle():
     return 0 if not outs else int(outs[-1].split('_')[0][5:]) + 1
 
 def run_step(calc, infile, tag):
-    # --- Start Debug Block ---
-    print(f"\n--- DEBUG: In run_step for tag '{tag}', about to read '{infile}' ---")
-    if os.path.exists(infile):
-        if os.path.getsize(infile) > 0:
-            print(f"--- Contents of {infile}: ---")
-            with open(infile, 'r') as f_debug:
-                print(f_debug.read())
-            print(f"--- End of {infile} contents ---")
-        else:
-            print(f"--- DEBUG WARNING: {infile} exists but is EMPTY. ---")
-    else:
-        print(f"--- DEBUG ERROR: {infile} does not exist! ---")
-    # --- End Debug Block ---
-
+    # Read the structure to be run
     atoms = read(infile)
+    # Assign the calculator to the atoms object. This does NOT run the calculation.
+    # It only sets up the parameters for writing the input files.
     atoms.calc = calc
-    atoms.get_potential_energy()
 
-    # --- Start Debug Block ---
-    print(f"--- DEBUG: VASP run finished for tag '{tag}'. Checking outputs. ---")
-    if os.path.exists("vasp_out"):
-        print("--- DEBUG: Contents of vasp_out (VASP stdout) ---")
-        with open("vasp_out", "r") as f_debug:
-            # Print last 20 lines of VASP output
-            lines = f_debug.readlines()
-            for line in lines[-20:]:
-                print(line.strip())
-        print("--- END DEBUG: vasp_out ---")
-    # --- End Debug Block ---
+    # --- Manually write VASP input files using ASE's writers ---
+    # The calculator will write INCAR and KPOINTS. POSCAR and POTCAR are already present.
+    atoms.calc.write_input(atoms)
+
+    # --- Manually execute VASP ---
+    # We use subprocess.run to have more control and capture output.
+    vasp_command_str = os.environ["VASP_COMMAND"]
+    # We split the command string into a list for subprocess
+    # Note: This is a simple split; works for "mpirun -np 16 ..."
+    # but might fail for more complex commands with quoted arguments.
+    command_list = vasp_command_str.split()
+    print(f"--- DEBUG: Executing command: {' '.join(command_list)} ---")
+
+    # We redirect stdout to 'vasp_out' manually
+    with open('vasp_out', 'w') as f_out:
+        result = subprocess.run(command_list, stdout=f_out, stderr=subprocess.PIPE, text=True)
+
+    if result.returncode != 0:
+        print(f"--- VASP CRASHED for tag {tag} ---")
+        print("--- stderr from VASP: ---")
+        print(result.stderr)
+        # We can decide to stop the workflow here if VASP crashes
+        sys.exit(f"VASP execution failed for tag {tag}. Check outputs.")
 
     shutil.copy("OUTCAR",  f"{tag}.OUTCAR")
     shutil.copy("CONTCAR", f"{tag}.CONTCAR")
@@ -51,19 +51,18 @@ def run_step(calc, infile, tag):
 
 def workflow(cif, potcar_dir):
     atoms = read(cif)                             # already in your workflow
-    atoms.info['comment'] = atoms.get_chemical_formula()   # <- clean first line
-    # Write POSCAR. The vasp format writer sorts atoms by symbol by default.
+    # This becomes the comment line in the POSCAR. Let's make it clean.
+    atoms.info['comment'] = f"Structure {os.path.splitext(cif)[0]}"
     write("POSCAR", atoms, format="vasp", vasp5=True)
 
     # --- Start Manual POTCAR Generation ---
-    # Get the exact order of elements from the written POSCAR
     symbols_in_order = []
+    # Read the newly written POSCAR to get the exact atom order
     for atom in read("POSCAR"):
         symbol = atom.symbol
         if symbol not in symbols_in_order:
             symbols_in_order.append(symbol)
 
-    # Concatenate POTCAR files in the correct order
     with open("POTCAR", 'wb') as potcar_file:
         for symbol in symbols_in_order:
             potcar_path = os.path.join(potcar_dir, symbol, 'POTCAR')
@@ -83,18 +82,16 @@ def workflow(cif, potcar_dir):
     print(f"Using npar={npar} and kpar={kpar} for this run.")
 
     common = dict(
-    command=os.environ["VASP_COMMAND"],
-    # We created the POTCAR manually, so we don't need pp, setups, or xc.
-    # We specify the functional directly with gga='PE'.
-    gga='PE',
+    # REMOVED command parameter as we now run VASP manually.
+    # We tell ASE a POTCAR exists by not providing pp, setups, or xc.
+    # Set GGA to PS for the PBEsol functional.
+    gga='PS',
     istart=0, icharg=2,
     prec="Accurate", lreal=False,
     encut=400, nelm=120, ediff=1e-6,
     kspacing=0.55, gamma=False,
     ispin=1, ediffg=1e-5, ibrion=2, isym=2, symprec=1e-8,
     ismear=0, lwave=True, lcharg=True,
-    # --- FIX ---
-    # Use the npar and kpar values calculated above
     npar=npar,
     kpar=kpar
     )
