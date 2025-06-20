@@ -17,16 +17,41 @@ def get_cycle():
 def run_step(structure, incar_settings, tag):
     print(f"\n--- Preparing VASP step: '{tag}' ---")
 
-    # This is the corrected call based on your pymatgen version's documentation.
-    # We use `user_potcar_settings` to override the default potential choices.
+    # Instantiate the input set to get access to its INCAR/KPOINTS generators.
+    # We provide the user_potcar_settings to ensure INCAR tags like LDAU are
+    # set correctly, even though we won't use its POTCAR writer.
     calc_set = MPRelaxSet(
         structure,
         user_incar_settings=incar_settings,
         force_gamma=False,
-        user_potcar_functional="PBE_54",
         user_potcar_settings={"Ti": "Ti", "O": "O"}
     )
-    calc_set.write_input('.')
+
+    # --- Manual Input File Writing ---
+    # We take manual control to bypass the rigid pathing of MPRelaxSet.
+    
+    # 1. Write INCAR and KPOINTS using pymatgen's generators.
+    calc_set.incar.write_file("INCAR")
+    calc_set.kpoints.write_file("KPOINTS")
+    
+    # 2. Write the POSCAR from the current structure object.
+    structure.to(fmt="poscar", filename="POSCAR")
+    
+    # 3. Manually concatenate the POTCAR files. This gives us full control
+    #    over the paths and circumvents the FileNotFoundError.
+    potcar_dir = os.environ["PMG_VASP_PSP_DIR"]
+    symbols_in_order = []
+    for site in structure:
+        symbol = site.specie.symbol
+        if symbol not in symbols_in_order:
+            symbols_in_order.append(symbol)
+            
+    with open("POTCAR", 'wb') as potcar_file:
+        for symbol in symbols_in_order:
+            potcar_path = os.path.join(potcar_dir, symbol, 'POTCAR')
+            with open(potcar_path, 'rb') as individual_potcar:
+                shutil.copyfileobj(individual_potcar, potcar_file)
+    # --- End Manual Input File Writing ---
 
     # Manually execute VASP using the command from the environment
     vasp_command_str = os.environ["VASP_COMMAND"]
@@ -52,9 +77,6 @@ def workflow(cif, potcar_dir):
     # Read the initial structure using pymatgen
     structure = Structure.from_file(cif)
     structure.comment = f"Structure {os.path.splitext(cif)[0]}"
-
-    # Manual POSCAR/POTCAR/CONTCAR creation is no longer needed.
-    # Pymatgen handles all input file generation within each run_step call.
 
     ranks  = int(os.environ.get("NSLOTS", "1"))
     kpar   = max(1, int(round(ranks ** 0.5)))
