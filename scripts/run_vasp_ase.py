@@ -63,8 +63,13 @@ def workflow(cif, potcar_dir):
     print(f"\n--- DEBUG: In workflow for '{cif}', checking initial POSCAR ---")
     with open("POSCAR", 'r') as f_debug:
         print("--- Contents of initial POSCAR: ---")
-        print(f_debug.read())
-        print("--- End of initial POSCAR contents ---")
+        # read the first few lines for debugging
+        for _ in range(20):
+            line = f_debug.readline()
+            if not line:
+                break
+            print(line.strip())
+    print("--- End of initial POSCAR contents ---")
     # --- End DEBUG block ---
 
     # --- Start Manual POTCAR Generation ---
