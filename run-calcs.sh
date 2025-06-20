@@ -18,9 +18,9 @@ module load mpi/intel/2021.6.0/intel
 eval "$(conda shell.bash hook)"
 
 export VASP_EXE=$HOME/Scratch/vasp/vasp-6.4.2/bin/vasp_std
-export VASP_COMMAND="mpiexec $VASP_EXE > vasp_out"
+export VASP_COMMAND="gerun $VASP_EXE > vasp_out"
 export VASP_PP_PATH=$HOME/Scratch/vasp/vasp-6.4.2/potentials/potentials_PBE.54
-export ASE_VASP_COMMAND="mpiexec $VASP_EXE > vasp_out"
+export ASE_VASP_COMMAND="gerun $VASP_EXE > vasp_out"
 
 conda activate DFT-Screen-venv
 

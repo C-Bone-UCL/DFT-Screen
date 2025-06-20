@@ -31,8 +31,10 @@ def run_workflow(cif_path, vasp_command, pp_path):
     #### Set parameters here
     cutoff = 500.0 # This is the planewave cutoff energy in eV
 
-    kp = 1 # k-point density
-    np = 16 // kp # Ensure that the number of processors is a divisor of mpi cores
+    kp = 4 # k-point density
+    np = 4 # Ensure that the number of processors is a divisor of mpi cores
+
+    gamma = False # Dont use gamma point sampling
 
     max2, max4, max3, max3s = 2000, 10, 100, 10 # Max steps for each run
     sym, spin, ivdw = 2, 1, 0 # Symmetry, spin polarization, and vdW correction
@@ -44,21 +46,21 @@ def run_workflow(cif_path, vasp_command, pp_path):
     #### Finished setting parameters
 
     #### Define the types of run that will be required
-    isif2 = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=True, reciprocal=True,
+    isif2 = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=gamma, reciprocal=True,
                  prec="Accurate", lreal=False, algo="All", encut=cutoff,
                  nelm=200, ediff=1e-7, xc=gga, kspacing=0.242, ispin=spin,
                  ediffg=ioncut, nsw=max2, ibrion=brion, isif=2, isym=sym, ivdw=ivdw,
                  npar=np, kpar=kp, potim=pim2, symprec=symprec, ismear=0,
                  command=vasp_command, pp=pp_path, directory=".")
 
-    isif3 = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=True, reciprocal=True,
+    isif3 = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=gamma, reciprocal=True,
                  prec="Accurate", lreal=False, algo="All", encut=cutoff,
                  nelm=200, ediff=1e-7, xc=gga, kspacing=0.242, ispin=spin,
                  ediffg=ioncut, nsw=max3, ibrion=brion, isif=3, isym=sym, ivdw=ivdw,
                  npar=np, kpar=kp, potim=pim3, symprec=symprec, ismear=0,
                  command=vasp_command, pp=pp_path, directory=".")
 
-    isif3s = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=True, reciprocal=True,
+    isif3s = Vasp(system="System", istart=ist, iniwav=1, icharg=0, gamma=gamma, reciprocal=True,
                   prec="Accurate", lreal=False, algo="All", encut=cutoff,
                   nelm=200, ediff=1e-7, xc=gga, kspacing=0.242, ispin=spin,
                   ediffg=ioncut, nsw=max3s, ibrion=brion, isif=3, isym=sym, ivdw=ivdw,
