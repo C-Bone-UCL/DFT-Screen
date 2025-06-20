@@ -17,16 +17,14 @@ def get_cycle():
 def run_step(structure, incar_settings, tag):
     print(f"\n--- Preparing VASP step: '{tag}' ---")
 
-    # This is the key change: We use `user_potcar_mapping` to explicitly
-    # tell MPRelaxSet which potential to use for each element, overriding
-    # its default (e.g. "Ti_pv"). This forces it to use the standard "Ti" and "O".
-    # We also specify the functional to ensure it looks in the correct PBE_54 library.
+    # This is the corrected call based on your pymatgen version's documentation.
+    # We use `user_potcar_settings` to override the default potential choices.
     calc_set = MPRelaxSet(
         structure,
         user_incar_settings=incar_settings,
         force_gamma=False,
         user_potcar_functional="PBE_54",
-        user_potcar_mapping={"Ti": "Ti", "O": "O"}
+        user_potcar_settings={"Ti": "Ti", "O": "O"}
     )
     calc_set.write_input('.')
 
