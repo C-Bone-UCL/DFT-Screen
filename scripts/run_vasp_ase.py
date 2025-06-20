@@ -17,28 +17,17 @@ def get_cycle():
 def run_step(structure, incar_settings, tag):
     print(f"\n--- Preparing VASP step: '{tag}' ---")
 
-    # Instantiate the input set to get access to its INCAR/KPOINTS generators.
-    # We provide the user_potcar_settings to ensure INCAR tags like LDAU are
-    # set correctly, even though we won't use its POTCAR writer.
     calc_set = MPRelaxSet(
         structure,
         user_incar_settings=incar_settings,
         force_gamma=False,
         user_potcar_settings={"Ti": "Ti", "O": "O"}
     )
-
-    # --- Manual Input File Writing ---
-    # We take manual control to bypass the rigid pathing of MPRelaxSet.
     
-    # 1. Write INCAR and KPOINTS using pymatgen's generators.
     calc_set.incar.write_file("INCAR")
     calc_set.kpoints.write_file("KPOINTS")
-    
-    # 2. Write the POSCAR from the current structure object.
     structure.to(fmt="poscar", filename="POSCAR")
     
-    # 3. Manually concatenate the POTCAR files. This gives us full control
-    #    over the paths and circumvents the FileNotFoundError.
     potcar_dir = os.environ["PMG_VASP_PSP_DIR"]
     symbols_in_order = []
     for site in structure:
@@ -51,9 +40,7 @@ def run_step(structure, incar_settings, tag):
             potcar_path = os.path.join(potcar_dir, symbol, 'POTCAR')
             with open(potcar_path, 'rb') as individual_potcar:
                 shutil.copyfileobj(individual_potcar, potcar_file)
-    # --- End Manual Input File Writing ---
 
-    # Manually execute VASP using the command from the environment
     vasp_command_str = os.environ["VASP_COMMAND"]
     command_list = vasp_command_str.split()
     print(f"--- Executing command: {' '.join(command_list)} ---")
@@ -74,7 +61,6 @@ def run_step(structure, incar_settings, tag):
     return "CONTCAR"
 
 def workflow(cif, potcar_dir):
-    # Read the initial structure using pymatgen
     structure = Structure.from_file(cif)
     structure.comment = f"Structure {os.path.splitext(cif)[0]}"
 
@@ -85,7 +71,6 @@ def workflow(cif, potcar_dir):
     npar   = max(1, ranks // kpar)
     print(f"Using npar={npar} and kpar={kpar} for this run.")
 
-    # Define INCAR settings as dictionaries. Pymatgen uses uppercase tags.
     common_settings = dict(
         PREC="Accurate",
         ENCUT=400,
@@ -110,28 +95,24 @@ def workflow(cif, potcar_dir):
 
     cyc = get_cycle()
     while cyc < 20:
-        # Run ISIF=2 relaxation (relax ions)
         run_step(structure, isif2_settings, f"Cycle{cyc}_ISIF2")
         structure = Structure.from_file("CONTCAR")
 
-        # Run ISIF=3 relaxation (relax ions, cell shape, volume)
         run_step(structure, isif3_settings, f"Cycle{cyc}_ISIF3")
         structure = Structure.from_file("CONTCAR")
 
         if check_finished(f"Cycle{cyc}_ISIF3.OUTCAR"):
-            # Final short relaxation to ensure convergence
             run_step(structure, isif3s_settings, f"Cycle{cyc}_ISIF3s")
             if check_finished(f"Cycle{cyc}_ISIF3s.OUTCAR"):
                 print("--- Workflow converged successfully. ---")
                 break
         cyc += 1
     
-    # Analyze the final vasprun.xml from the last successful step
     vr = Vasprun("vasprun.xml", parse_eigen=True)
     gap = vr.get_band_structure().get_band_gap()["energy"]
     with open("results.txt", "w") as f:
         f.write(f"Energy_eV {vr.final_energy:.6f}\nBandGap_eV {gap:.4f}\n")
-    os.chdir("..")
+    # The os.chdir("..") line that was here has been removed.
 
 def main():
     pr = argparse.ArgumentParser()
