@@ -5,30 +5,57 @@ from pymatgen.io.vasp.sets import MPRelaxSet
 from pymatgen.io.vasp.outputs import Vasprun
 
 def check_finished(f="OUTCAR"):
+    """
+    Check if the VASP run has reached the required accuracy.
+    """
+
     if not os.path.isfile(f):
         return False
     with open(f) as h:
         return any("reached required accuracy" in ln for ln in h)
 
 def get_cycle():
+    """ 
+    Inspects the filesystem for previously completed cycle outputs
+    By finding the highest-numbered cycle that has already run, resumes 
+    from the next logical step, rather than starting over from cycle 0
+    """
+
     outs = sorted(glob.glob("Cycle*ISIF3.OUTCAR"))
     return 0 if not outs else int(outs[-1].split('_')[0][5:]) + 1
 
 def run_step(structure, incar_settings, tag):
-    print(f"\n--- Preparing VASP step: '{tag}' ---")
+    """
+    Run a single VASP step with the given structure and settings.
+    
+    1. Prepares the VASP input files (INCAR, KPOINTS, POSCAR, POTCAR).
+    Using MPRelaxSet for standard settings.
+    2. Executes the VASP command defined in the environment variable VASP_COMMAND.
+    3. Checks for successful completion and copies output files.
+    4. Returns the name of the CONTCAR file for the next step.
+    """
+    
+    print(f"\n####Preparing VASP step: '{tag}'####\n")
 
     calc_set = MPRelaxSet(
         structure,
         user_incar_settings=incar_settings,
         force_gamma=False,
-        user_potcar_settings={"Ti": "Ti", "O": "O"}
+        user_potcar_settings={"Ti": "Ti", "O": "O"} # Adjust as needed for your elements
     )
+    # Default is the PBE fucntional
     
+    # Make INCAR, KPOINTS, and POSCAR files normally
     calc_set.incar.write_file("INCAR")
     calc_set.kpoints.write_file("KPOINTS")
     structure.to(fmt="poscar", filename="POSCAR")
     
     potcar_dir = os.environ["PMG_VASP_PSP_DIR"]
+
+    # This part collects all unique species in the structure
+    # and writes a combined POTCAR file
+    # Done manually because pymatgen's default POTCAR generation
+    # does not support our potentials directory structure
     symbols_in_order = []
     for site in structure:
         symbol = site.specie.symbol
@@ -41,19 +68,22 @@ def run_step(structure, incar_settings, tag):
             with open(potcar_path, 'rb') as individual_potcar:
                 shutil.copyfileobj(individual_potcar, potcar_file)
 
+
     vasp_command_str = os.environ["VASP_COMMAND"]
     command_list = vasp_command_str.split()
-    print(f"--- Executing command: {' '.join(command_list)} ---")
+
+    print(f"####Executing command: {' '.join(command_list)}####")
 
     with open('vasp_out', 'w') as f_out:
         result = subprocess.run(command_list, stdout=f_out, stderr=subprocess.PIPE, text=True)
 
     if result.returncode != 0:
-        print(f"--- VASP CRASHED for tag {tag} ---")
-        print("--- stderr from VASP: ---")
+        print(f"####VASP CRASHED for tag {tag}####")
+        print("####stderr from VASP:####")
         print(result.stderr)
         sys.exit(f"VASP execution failed for tag {tag}. Check outputs.")
 
+    # to record relaxation trajectory
     shutil.copy("OUTCAR",  f"{tag}.OUTCAR")
     shutil.copy("CONTCAR", f"{tag}.CONTCAR")
     shutil.copy("vasprun.xml", f"{tag}.vasprun.xml")
@@ -61,9 +91,23 @@ def run_step(structure, incar_settings, tag):
     return "CONTCAR"
 
 def workflow(cif, potcar_dir):
+    """
+    Main workflow function to run VASP calculations on a given CIF file.
+
+    1. Reads the CIF file to create a pymatgen Structure object.
+    2. Sets up the VASP calculation parameters based on the environment.
+    3. Runs the VASP calculations in a loop until convergence is achieved.
+        a. Uses ISIF=2 for initial relaxation of ions while keeping cell fixed.
+        b. Uses ISIF=3 for further relaxation of both ions and cell.
+        c. Uses ISIF=3(s) with a smaller number of steps for final convergence.
+    4. Outputs the final energy and band gap to a results file.
+    """
+
     structure = Structure.from_file(cif)
     structure.comment = f"Structure {os.path.splitext(cif)[0]}"
 
+    # This bit is for parallelization settings
+    # It determines the number of processors to use based on the NSLOTS environment variable.
     ranks  = int(os.environ.get("NSLOTS", "1"))
     kpar   = max(1, int(round(ranks ** 0.5)))
     while ranks % kpar:
@@ -71,23 +115,33 @@ def workflow(cif, potcar_dir):
     npar   = max(1, ranks // kpar)
     print(f"Using npar={npar} and kpar={kpar} for this run.")
 
+    # Common settings for all VASP runs
     common_settings = dict(
-        PREC="Accurate",
-        ENCUT=400,
-        EDIFF=1e-6,
-        EDIFFG=1e-5,
-        ISMEAR=0,
-        IBRION=2,
-        ISPIN=1,
-        LREAL=False,
-        LWAVE=True,
-        LCHARG=True,
-        NELM=120,
-        ISYM=2,
-        SYMPREC=1e-8,
-        NPAR=npar,
-        KPAR=kpar,
+        PREC="Accurate",    # Internal precision related params
+        ENCUT=400,          # Energy cutoff for plane waves (size of basis set)
+        EDIFF=1e-6,         # Energy convergence criterion
+        EDIFFG=1e-5,        # Force convergence criterion
+        ISMEAR=0,           # smearing applied to electronic states (0 = Gaussian smearing)
+        SIGMA=0.1,          # Width of smearing function
+        IBRION=2,           # Ionic relaxation algorithm (2 = conjugate gradient)
+        ISPIN=1,            # Spin polarization (1 = non-spin-polarized, 2 = if magnetic)
+        LREAL=False,        # Whether to use real-space projection for faster calculations
+        LWAVE=True,         # Write WAVECAR file (useful for restarting calculations)
+        LCHARG=True,        # Write CHGCAR file (useful for charge density analysis)
+        NELM=120,           # Max steps for electronic convergence
+        ISYM=2,             # Symmetry handling (2 = automatic symmetry detection)
+        SYMPREC=1e-5,       # Precision for symmetry detection
+        NPAR=npar,          # Number of processors for parallelization
+        KPAR=kpar,          # K-point parallelization
     )
+
+    # ISIF : Degrees of freedom for relaxation
+    # ISIF=2: Relax ions, keep cell fixed
+    # ISIF=3: Relax both ions and cell
+    # ISIF=3s: Relax both ions and cell with fewer steps for final convergence
+
+    # NSW : Number of ionic steps
+    # POTIM : Ionic step size (time step for ionic dynamics)
 
     isif2_settings  = {**common_settings, "ISIF": 2, "NSW": 60, "POTIM": 0.5}
     isif3_settings  = {**common_settings, "ISIF": 3, "NSW": 80, "POTIM": 0.75}
@@ -100,23 +154,23 @@ def workflow(cif, potcar_dir):
 
         # print intermediate results
         vr = Vasprun("vasprun.xml", parse_eigen=True)
-        print(f"Cycle {cyc} - Energy: {vr.final_energy:.6f} eV")
+        print(f"ISIF2 - Energy: {vr.final_energy:.6f} eV")
 
         run_step(structure, isif3_settings, f"Cycle{cyc}_ISIF3")
         structure = Structure.from_file("CONTCAR")
 
         # Print intermediate results
         vr = Vasprun("vasprun.xml", parse_eigen=True)
-        print(f"Cycle {cyc} - Energy: {vr.final_energy:.6f} eV")
+        print(f"ISIF3 - Energy: {vr.final_energy:.6f} eV")
 
         if check_finished(f"Cycle{cyc}_ISIF3.OUTCAR"):
             run_step(structure, isif3s_settings, f"Cycle{cyc}_ISIF3s")
             if check_finished(f"Cycle{cyc}_ISIF3s.OUTCAR"):
-                print("--- Workflow converged successfully. ---")
+                print("####Workflow converged successfully.####")
                 # Print final results
                 vr = Vasprun("vasprun.xml", parse_eigen=True)
-                print(f"Final Energy: {vr.final_energy:.6f} eV")
-                print(f"Final Band Gap: {vr.get_band_structure().get_band_gap()['energy']:.4f} eV")
+                print(f"ISIF3s Energy: {vr.final_energy:.6f} eV")
+                print(f"ISIF3s Band Gap: {vr.get_band_structure().get_band_gap()['energy']:.4f} eV")
                 break
         cyc += 1
     
@@ -124,7 +178,6 @@ def workflow(cif, potcar_dir):
     gap = vr.get_band_structure().get_band_gap()["energy"]
     with open("results.txt", "w") as f:
         f.write(f"Energy_eV {vr.final_energy:.6f}\nBandGap_eV {gap:.4f}\n")
-    # The os.chdir("..") line that was here has been removed.
 
 def main():
     pr = argparse.ArgumentParser()
@@ -135,14 +188,20 @@ def main():
     if not potdir or not os.environ.get("VASP_COMMAND"):
         sys.exit("export VASP_COMMAND and PMG_VASP_PSP_DIR before running.")
 
+    output_dir = "vasp_outputs"
+    os.makedirs(output_dir, exist_ok=True)
+
     for cif in sorted(f for f in os.listdir(args.cif_dir) if f.lower().endswith(".cif")):
         case = os.path.splitext(cif)[0]
-        if not os.path.isdir(case):
-            os.mkdir(case)
-        shutil.copy(os.path.join(args.cif_dir, cif), case)
-        os.chdir(case)
+        case_path = os.path.join(output_dir, case)
+        
+        if not os.path.isdir(case_path):
+            os.makedirs(case_path)
+            
+        shutil.copy(os.path.join(args.cif_dir, cif), case_path)
+        os.chdir(case_path)
         workflow(cif, potdir)
-        os.chdir("..")
+        os.chdir("../..")
 
 if __name__ == "__main__":
     main()
