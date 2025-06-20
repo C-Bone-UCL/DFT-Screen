@@ -24,5 +24,5 @@ export ASE_VASP_COMMAND="mpiexec $VASP_EXE > vasp_out"
 
 conda activate DFT-Screen-venv
 
-python scripts/run_vasp_ase.py --cif_dir files/TiO2_polymorphs
+python scripts/run_vasp_ase.py files/TiO2_polymorphs
 

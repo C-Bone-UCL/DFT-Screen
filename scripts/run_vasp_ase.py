@@ -21,9 +21,12 @@ def check_finished(outfile):
     return False
 
 def run_workflow(cif_path, vasp_command, pp_path):
+    atoms = ase.io.read(cif_path)
+
     os.makedirs("run", exist_ok=True)
     os.chdir("run")
-    write("POSCAR", read(cif_path), format="vasp")
+
+    write("POSCAR", atoms, format="vasp")
 
     #### Set parameters here
     cutoff = 500.0 # This is the planewave cutoff energy in eV
@@ -100,6 +103,8 @@ def main():
     vasp_cmd = os.environ["VASP_COMMAND"]
     pp_path = os.environ["VASP_PP_PATH"]
     for cif in sorted(f for f in os.listdir(args.cif_dir) if f.lower().endswith(".cif")):
+        print(f"Processing {cif}...")
+
         name = os.path.splitext(cif)[0]
         if not os.path.exists(name):
             os.mkdir(name)
