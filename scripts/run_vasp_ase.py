@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, shutil, argparse, glob, subprocess
+import os, sys, shutil, argparse, glob, subprocess, time
 from pymatgen.core import Structure
 from pymatgen.io.vasp.sets import MPRelaxSet
 from pymatgen.io.vasp.outputs import Vasprun
@@ -106,8 +106,6 @@ def workflow(cif, potcar_dir):
     structure = Structure.from_file(cif)
     structure.comment = f"Structure {os.path.splitext(cif)[0]}"
 
-    print(f"####Starting workflow for {structure.comment}####")
-
     # This bit is for parallelization settings
     # It determines the number of processors to use based on the NSLOTS environment variable.
     ranks  = int(os.environ.get("NSLOTS", "1"))
@@ -120,7 +118,7 @@ def workflow(cif, potcar_dir):
     # Common settings for all VASP runs
     common_settings = dict(
         PREC="Accurate",    # Internal precision related params
-        ENCUT=520,          # Energy cutoff for plane waves (size of basis set)
+        ENCUT=700,          # Energy cutoff for plane waves (size of basis set, scaling is expensive)
         EDIFF=1e-6,         # Energy convergence criterion
         EDIFFG=1e-5,        # Force convergence criterion
         ISMEAR=0,           # smearing applied to electronic states (0 = Gaussian smearing)
@@ -178,8 +176,7 @@ def workflow(cif, potcar_dir):
     
     vr = Vasprun("vasprun.xml", parse_eigen=True)
     gap = vr.get_band_structure().get_band_gap()["energy"]
-    with open("results.txt", "w") as f:
-        f.write(f"Energy_eV {vr.final_energy:.6f}\nBandGap_eV {gap:.4f}\n")
+    return vr.final_energy, gap
 
 def main():
     pr = argparse.ArgumentParser()
@@ -201,9 +198,21 @@ def main():
             os.makedirs(case_path)
             
         shutil.copy(os.path.join(args.cif_dir, cif), case_path)
+        
+        original_dir = os.getcwd()
         os.chdir(case_path)
-        workflow(cif, potdir)
-        os.chdir("../..")
+        
+        start_time = time.time()
+        final_energy, band_gap = workflow(cif, potdir)
+        end_time = time.time()
+        duration = end_time - start_time
+        
+        with open("results.txt", "w") as f:
+            f.write(f"Energy_eV {final_energy:.6f}\n")
+            f.write(f"BandGap_eV {band_gap:.4f}\n")
+            f.write(f"Runtime_s {duration:.2f}\n")
+            
+        os.chdir(original_dir)
 
 if __name__ == "__main__":
     main()
