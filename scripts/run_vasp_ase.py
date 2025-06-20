@@ -31,7 +31,7 @@ def run_workflow(cif_path, vasp_command, pp_path):
     #### Set parameters here
     cutoff = 500.0 # This is the planewave cutoff energy in eV
 
-    kp, np = 1 # k-point density and number of processors
+    kp = 1 # k-point density
     np = 16 // kp # Ensure that the number of processors is a divisor of mpi cores
 
     max2, max4, max3, max3s = 2000, 10, 100, 10 # Max steps for each run
